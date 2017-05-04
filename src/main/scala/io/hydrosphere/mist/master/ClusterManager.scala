@@ -130,6 +130,23 @@ private[mist] class ClusterManager extends Actor with Logger {
     } else { startNewWorkerWithName(name) }
   }
 
+  def runCmdStopByName(name: String): Unit = {
+    if (MistConfig.Workers.cmdStop.nonEmpty && name.nonEmpty) {
+      new Thread {
+        override def run(): Unit = {
+          MistConfig.Workers.runner match {
+            case "manual" =>
+              Process(
+                Seq("bash", "-c", MistConfig.Workers.cmdStop.get),
+                None,
+                "MIST_WORKER_NAMESPACE" -> name
+              ).!
+          }
+        }
+      }.start()
+    }
+  }
+
   override def receive: Receive = {
 
     case ListRouters(extended) =>
@@ -230,9 +247,19 @@ private[mist] class ClusterManager extends Actor with Logger {
       sender ! Constants.CLI.stopAllWorkers
 
     case message: RemovingMessage =>
+      val name = {
+        val workerName = workers.getNameByUID(message.contextIdentifier)
+        if(workerName.nonEmpty) {
+          workerName
+        }
+        else {
+          message.contextIdentifier
+        }
+      }
       removeWorkerByName(message.contextIdentifier)
       removeWorkerByUID(message.contextIdentifier)
       sender ! s"Worker ${message.contextIdentifier} is scheduled for shutdown."
+      runCmdStopByName(name)
 
     case WorkerDidStart(uid, name, address) =>
       logger.info(s"Worker `$name` did start on $address")
@@ -249,9 +276,7 @@ private[mist] class ClusterManager extends Actor with Logger {
     case jobRequest: FullJobConfiguration =>
       val originalSender = sender
       startNewWorkerWithName(jobRequest.namespace)
-
-      MistConfig.reload()
-
+      
       workers.registerCallbackForName(jobRequest.namespace, {
         case WorkerLink(uid, name, address, false) =>
           val remoteActor = cluster.system.actorSelection(s"$address/user/$name")
@@ -295,7 +320,11 @@ private[mist] class ClusterManager extends Actor with Logger {
       }
 
     case MemberRemoved(member, _) =>
+      val uid = workers.getUIDByAddress(member.address.toString)
+      val name = workers.getNameByUID(uid)
       removeWorkerByAddress(member.address.toString)
+
+      runCmdStopByName(name)
 
   }
 

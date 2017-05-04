@@ -1,0 +1,71 @@
+{
+  "variables": {
+    "aws_access_key":  "{{env `AWS_ACCESS_KEY_ID`}}",
+    "aws_secret_key":  "{{env `AWS_SECRET_ACCESS_KEY`}}",
+    "weave_version":   "v1.9.4",
+    "aws_region":      "eu-west-1",
+    "aws_source_ami":  "ami-95f8d2f3",
+    "spark_version":   "2.1.0"
+  },
+  "builders": [{
+    "ami_name":        "mist {{timestamp}}",
+    "type":            "amazon-ebs",
+    "access_key":      "{{user `aws_access_key`}}",
+    "secret_key":      "{{user `aws_secret_key`}}",
+    "region":          "{{user `aws_region`}}",
+    "source_ami":      "{{user `aws_source_ami`}}",
+    "instance_type":   "m3.medium",
+    "associate_public_ip_address": true,
+    "ssh_username":    "ec2-user",
+    "ami_block_device_mappings": [{
+      "device_name": "/dev/xvdcz",
+      "volume_size": 40,
+      "volume_type": "gp2",
+      "delete_on_termination": true
+    }]
+  }],
+  "provisioners": [{
+    "type": "file",
+    "source": "upload/weave.conf",
+    "destination": "/home/ec2-user/weave.conf"
+  }, {
+    "type": "file",
+    "source": "upload/peers.sh",
+    "destination": "/home/ec2-user/peers.sh"
+  }, {
+    "type": "file",
+    "source": "upload/run.sh",
+    "destination": "/home/ec2-user/run.sh"
+  },{
+    "type": "shell",
+    "inline": [
+      "sudo yum update",
+      "sudo yum -y install jq nc nfs-utils python27 python27-pip aws-cfn-bootstrap jq",
+      "sudo pip install awscli",
+      "docker pull hydrosphere/spark:{{user `spark_version`}}",
+      "docker pull hydrosphere/mist:ecs-{{user `spark_version`}}",
+
+      "sudo mkdir /root/.aws/",
+      "sudo echo -e \"[default]\noutput = json\nregion = {{user `aws_region`}}\" > /root/.aws/config",
+      "sudo mkdir /mnt/efs",
+
+      "sudo curl -L https://github.com/weaveworks/weave/releases/download/{{user `weave_version`}}/weave -o /usr/local/bin/weave",
+      "sudo chmod +x /usr/local/bin/weave",
+      "sudo /usr/local/bin/weave setup",
+
+      "sudo mv /home/ec2-user/weave.conf /etc/init/weave.conf",
+      "sudo mkdir /etc/weave",
+      "sudo mv /home/ec2-user/peers.sh /etc/weave/peers.sh",
+      "sudo chmod +x /etc/weave/peers.sh",
+      "sudo mv /home/ec2-user/run.sh /etc/weave/run.sh",
+      "sudo chmod +x /etc/weave/run.sh",
+
+      "# Remove all ECS execution traces added while running packer",
+      "sudo stop ecs || true",
+      "sudo docker rm ecs-agent 2> /dev/null || true",
+      "sudo rm -rf /var/log/ecs/* /var/lib/ecs/data/*",
+      "sudo rm /root/.ssh/authorized_keys",
+      "sudo rm /home/ec2-user/.ssh/authorized_keys"
+    ]
+  }]
+}

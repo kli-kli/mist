@@ -6,6 +6,7 @@ import org.apache.spark.streaming.{Duration => SDuration}
 import scala.collection.JavaConversions._
 import scala.concurrent.duration.Duration
 
+
 /** Configuration wrapper */
 private[mist] object MistConfig {
 
@@ -126,7 +127,14 @@ private[mist] object MistConfig {
     def dockerPort: Int = workers.getInt("docker-port")
 
     /** Shell command for manual running */
-    def cmd: String = workers.getString("cmd")
+    lazy val cmd: String = workers.getString("cmd")
+
+    /** Shell command for stop ecs after worker downtime*/
+    lazy val cmdStop: Option[String] = try {
+      Option(workers.getString("cmd-stop"))
+    } catch {
+      case _: ConfigException.Missing => None
+    }
   }
 
   /** Settings for all contexts generally and for each context particularly */
