@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+
+export MIST_HOME="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../" && pwd )"
+
+cmd=$1
+
+shift
+while [[ $# > 1 ]]
+do
+  key="$1"
+
+  case ${key} in
+    --namespace)
+      namespace="$2"
+      shift
+      ;;
+
+    --run-options)
+      run_options="$2"
+      shift
+      ;;
+
+  esac
+
+shift
+done
+
+eval $(crudini --get --format=sh $MIST_HOME/configs/ecs.ini default)
+eval $(crudini --get --format=sh $MIST_HOME/configs/ecs.ini $namespace)
+
+if [ "${cmd}" == 'start' ]
+then
+  if [ "`aws ecs list-attributes --target-type container-instance --cluster $clusterName --attribute-name $namespace | jq -r '.attributes | length'`" = "0" ]; then
+    masterArn=`aws ecs list-attributes --target-type container-instance --cluster $clusterName --attribute-name context --attribute-value master | jq -r '.attributes | .[].targetId'`
+    aws ecs put-attributes --cluster $clusterName --attributes name=$namespace,value=true,targetId="$masterArn"
+cat << EOF > /tmp/user-data-$namespace.sh
+#!/bin/bash
+echo ECS_CLUSTER=$clusterName >> /etc/ecs/ecs.config
+/usr/local/bin/aws configure set preview.efs true
+#Get region of EC2 from instance metadata
+EC2_AVAIL_ZONE=`curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone`
+EC2_REGION="`echo \"$EC2_AVAIL_ZONE\" | sed -e 's:\([0-9][0-9]*\)[a-z]*\$:\\1:'`"
+#Instance needs to be added to a EC2 role that give the instance at least read access to EFS
+EFS_FILE_SYSTEM_ID=`/usr/local/bin/aws efs describe-file-systems --region $EC2_REGION | jq '.FileSystems[]' | jq 'select(.Name==$efsName)' | jq -r '.FileSystemId'`
+#Check to see if the variable is set. If not, then exit.
+if [-z "$EFS_FILE_SYSTEM_ID"]; then
+  echo "ERROR: variable not set" 1> /etc/efssetup.log
+  exit
+fi
+#Create variables for source and target
+DIR_SRC=$EC2_AVAIL_ZONE.$EFS_FILE_SYSTEM_ID.efs.$EC2_REGION.amazonaws.com
+DIR_TGT=/mnt/efs
+#Mount EFS file system
+mount -t nfs4 $DIR_SRC:/ $DIR_TGT
+#Backup fstab
+cp -p /etc/fstab /etc/fstab.back-$(date +%F)
+#Append line to fstab
+echo -e "$DIR_SRC:/ \t\t $DIR_TGT \t\t nfs \t\t defaults \t\t 0 \t\t 0" | tee -a /etc/fstab
+start weave
+start ecs
+while [ "\`nc -zv localhost 51678 &> /dev/null; echo \$?\`" != "0" ]; do
+  echo "ecs agent is unreachable"
+  sleep 10
+done
+ARN_ID=\`curl http://localhost:51678/v1/metadata | jq -r .ContainerInstanceArn\`
+resp=\`/usr/local/bin/aws ecs put-attributes --cluster $clusterName --attributes name=context,value=$namespace,targetId="\$ARN_ID"\`
+EOF
+    #create instances for context
+    aws ec2 run-instances --image-id $imageId --key-name $keyName --security-group-ids $securityGroupIds --user-data file:///tmp/user-data-$namespace.sh --instance-type $instanceType --subnet-id $subnetId --iam-instance-profile Name=ecsInstanceRole --count $[$sparkSlavesCount+1] --associate-public-ip-address
+    while [ "`aws ecs list-attributes --target-type container-instance --cluster $clusterName --attribute-name context --attribute-value $namespace | jq '.attributes | length'`" != "$[$sparkSlavesCount+1]" ]; do
+      sleep 10
+    done
+    instanceArn=`aws ecs list-attributes --target-type container-instance --cluster $clusterName --attribute-name context --attribute-value $namespace | jq '.attributes | .[0].targetId'`
+    describeInstance=`aws ecs describe-container-instances --cluster $clusterName --container-instances $instanceArn`
+    cpu=`echo $describeInstance | jq '.containerInstances | .[].registeredResources | .[] | select(.name=="CPU") | .integerValue'`
+    memory=`echo $describeInstance | jq '.containerInstances | .[].registeredResources | .[] | select(.name=="MEMORY") | .integerValue'`
+    requestMist="{
+      \"family\": \"Mist-worker\",
+      \"containerDefinitions\": [
+        {
+          \"name\": \"mist-worker-$namespace\",
+          \"memory\": $memory,
+          \"cpu\": $cpu,
+          \"image\": \"hydrosphere/mist:ecs-${SparkVersion}\",
+          \"command\": [
+            \"worker-ecs\",
+            \"$namespace\",
+            \"$run_options\"
+          ],
+          \"essential\": true,
+          \"mountPoints\": [
+            {
+              \"sourceVolume\": \"mist-configs\",
+              \"containerPath\": \"/usr/share/mist/configs/\",
+              \"readOnly\": false
+            },
+            {
+              \"sourceVolume\": \"mist-jobs\",
+              \"containerPath\": \"/jobs/\",
+              \"readOnly\": false
+            }
+          ]
+        }
+      ],
+      \"volumes\": [
+        {
+          \"name\": \"mist-configs\",
+          \"host\": {
+            \"sourcePath\": \"/mnt/efs/mist-configs\"
+          }
+        },
+        {
+          \"name\": \"mist-jobs\",
+          \"host\": {
+            \"sourcePath\": \"/mnt/efs/mist-jobs\"
+          }
+        }
+      ]
+    }"
+
+    requestSpark="{
+      \"family\": \"Spark-slaves\",
+      \"containerDefinitions\": [
+        {
+          \"name\": \"spark-slave-$namespace\",
+          \"memory\": $memory,
+          \"cpu\": $cpu,
+          \"image\": \"hydrosphere/spark:2.1.0\",
+          \"command\": [
+            \"slave\",
+            \"spark://mist-worker-$namespace:7077\"
+          ],
+          \"essential\": true,
+          \"mountPoints\": [
+            {
+              \"sourceVolume\": \"mist-configs\",
+              \"containerPath\": \"/usr/share/mist/configs/\",
+              \"readOnly\": false
+            },
+            {
+              \"sourceVolume\": \"mist-jobs\",
+              \"containerPath\": \"/jobs/\",
+              \"readOnly\": false
+            }
+          ]
+        }
+      ],
+      \"volumes\": [
+        {
+          \"name\": \"mist-configs\",
+          \"host\": {
+            \"sourcePath\": \"/mnt/efs/mist-configs\"
+          }
+        },
+        {
+          \"name\": \"mist-jobs\",
+          \"host\": {
+            \"sourcePath\": \"/mnt/efs/mist-jobs\"
+          }
+        }
+      ]
+    }"
+    #Run mist worker with spark master and put attribute
+    aws ecs register-task-definition --cli-input-json "$requestMist"
+    responceMist=`aws ecs run-task --cluster $clusterName --placement-constraints type=memberOf,expression="attribute:context == $namespace" --task-definition $clusterName-worker`
+
+    #Run Spark slaves
+    aws ecs register-task-definition --cli-input-json "$requestSpark"
+    responceSpark=`aws ecs run-task --cluster $clusterName --placement-constraints type=memberOf,expression="attribute:context == $namespace" --task-definition $clusterName-slaves --count $sparkSlavesCount`
+  fi
+elif [ "${cmd}" == 'stop' ]
+then
+  masterArn=`aws ecs list-attributes --target-type container-instance --cluster $clusterName --attribute-name context --attribute-value master | jq -r '.attributes | .[].targetId'`
+  aws ecs delete-attributes --cluster $clusterName --attributes name=$namespace,targetId="$masterArn"
+  listContext=`aws ecs list-attributes --target-type container-instance --cluster $clusterName --attribute-name context --attribute-value $namespace`
+  echo $listContext
+  instanceArns=($(echo $listContext | jq -r  '.attributes | .[].targetId'))
+  for arn in "${instanceArns[@]}"
+  do
+    ec2InstanceId=`aws ecs deregister-container-instance --cluster $clusterName --container-instance "$arn" --force | jq -r '.containerInstance | .ec2InstanceId'`
+    aws ec2 stop-instances --instance-ids $ec2InstanceId
+  done
+fi

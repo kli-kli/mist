@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS CloudFormation template to create a new mist cluster
+Parameters:
+  EcsClusterName:
+    Type: String
+    Description: >
+      Specifies the ECS Cluster Name with which the resources would be
+      associated
+    Default: default
+  EcsAmiId:
+    Type: String
+    Description: Specifies the AMI ID for your container instances.
+    Default: 'ami-a7f2acc1'
+  EcsInstanceType:
+    Type: String
+    Description: >
+      Specifies the EC2 instance type for your container instances.
+    Default: t2.small
+    ConstraintDescription: must be a valid EC2 instance type.
+  KeyName:
+    Type: String
+    Description: >
+      Optional - Specifies the name of an existing Amazon EC2 key pair
+      to enable SSH access to the EC2 instances in your cluster.
+    Default: ''
+  VpcCidr:
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Type: String
+    Description: Optional - Specifies the CIDR Block of VPC
+    Default: '10.22.0.0/16'
+  SubnetCidr:
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Type: String
+    Description: Optional - Specifies the CIDR Block of VPC
+    Default: '10.22.1.0/24'
+  EfsName:
+    Type: String
+    Description: >
+      Optional - Specifies the EFS name for shared folders
+    Default: ''
+  EbsVolumeSize:
+    Type: String
+    Description: >
+      Optional - Specifies the Size in GBs, of the newly created Amazon
+      Elastic Block Store (Amazon EBS) volume
+    Default: '40'
+    ConstraintDescription: Must be a valid EC2 volume type.
+  SparkVersion:
+    Type: String
+    Default: '2.1.0'
+    AllowedValues: [2.1.0, 2.0.2, 1.6.2, 1.5.2]
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref 'VpcCidr'
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'Vpc'
+      CidrBlock: !Ref 'SubnetCidr'
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref 'Vpc'
+      InternetGatewayId: !Ref 'InternetGateway'
+  RouteViaIgw:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  PublicRouteViaIgw:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref 'RouteViaIgw'
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref 'InternetGateway'
+  PubSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteViaIgw
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access and HTTP access on the configured port
+      VpcId: !Ref 'Vpc'
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '0'
+        ToPort: '65535'
+        CidrIp: !Ref 'VpcCidr'
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '2003'
+        ToPort: '2003'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '1883'
+        ToPort: '1883'
+        CidrIp: 0.0.0.0/0
+  ElasticFileSystem:
+    Type: "AWS::EFS::FileSystem"
+    Properties:
+      FileSystemTags:
+        -
+          Key: "Name"
+          Value: !Ref 'EfsName'
+  MountTarget:
+    Type: "AWS::EFS::MountTarget"
+    Properties:
+      FileSystemId: !Ref 'ElasticFileSystem'
+      SubnetId: !Ref "Subnet"
+      SecurityGroups:
+        -
+          Ref: 'InstanceSecurityGroup'
+  IamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [!Ref 'DescribeRole']
+  DescribeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: describe-instance-policy
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['ec2:*', 'ecs:*', 'elasticfilesystem:Describe*']
+            Resource: '*'
+  EcsCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Ref 'EcsClusterName'
+  EC2InstanceMaster:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref 'EcsAmiId'
+      InstanceType: !Ref 'EcsInstanceType'
+      IamInstanceProfile: !Ref 'IamInstanceProfile'
+      KeyName: !Ref 'KeyName'
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeleteOnTermination: 'true'
+          DeviceIndex: '0'
+          SubnetId: !Ref 'Subnet'
+          GroupSet:
+            - Ref: 'InstanceSecurityGroup'
+      BlockDeviceMappings:
+        -
+          DeviceName: /dev/xvdcz
+          Ebs:
+            VolumeType: gp2
+            VolumeSize: !Ref 'EbsVolumeSize'
+      UserData:
+        Fn::Base64: !Sub |
+           #!/bin/bash
+           echo ECS_CLUSTER=${EcsClusterName} >> /etc/ecs/ecs.config
+           /usr/local/bin/aws configure set preview.efs true
+           #Get region of EC2 from instance metadata
+           EC2_AVAIL_ZONE=`curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone`
+           EC2_REGION="`echo \"$EC2_AVAIL_ZONE\" | sed -e 's:\([0-9][0-9]*\)[a-z]*\$:\\1:'`"
+           #Instance needs to be added to a EC2 role that give the instance at least read access to EFS
+           EFS_FILE_SYSTEM_ID=`/usr/local/bin/aws efs describe-file-systems --region $EC2_REGION | jq '.FileSystems[]' | jq 'select(.Name=="${EfsName}")' | jq -r '.FileSystemId'`
+           #Check to see if the variable is set. If not, then exit.
+           if [-z "$EFS_FILE_SYSTEM_ID"]; then
+             echo "ERROR: variable not set" 1> /etc/efssetup.log
+             exit
+           fi
+           #Create variables for source and target
+           DIR_SRC=$EC2_AVAIL_ZONE.$EFS_FILE_SYSTEM_ID.efs.$EC2_REGION.amazonaws.com
+           DIR_TGT=/mnt/efs
+           #Mount EFS file system
+           mount -t nfs4 $DIR_SRC:/ $DIR_TGT
+           #Backup fstab
+           cp -p /etc/fstab /etc/fstab.back-$(date +%F)
+           #Append line to fstab
+           echo -e "$DIR_SRC:/ \t\t $DIR_TGT \t\t nfs \t\t defaults \t\t 0 \t\t 0" | tee -a /etc/fstab
+           #Create folders if this needs
+           if [ ! -d "$DIR_TGT/mist-configs" ]; then
+             mkdir $DIR_TGT/mist-configs
+             docker run --name tmp-for-copy -d hydrosphere/mist:ecs-${SparkVersion}
+             docker cp tmp-for-copy:/usr/share/mist/configs/. $DIR_TGT/mist-configs
+           cat << EOF > $DIR_TGT/mist-configs/ecs.ini
+           [default]
+           clusterName=${EcsClusterName}
+           instanceType=${EcsInstanceType}
+           imageId=${EcsAmiId}
+           keyName=${KeyName}
+           securityGroupIds=${InstanceSecurityGroup}
+           subnetId=${Subnet}
+           efsName=${EfsName}
+           sparkSlavesCount=1
+           sparkVersion=${SparkVersion}
+           EOF
+             docker rm -f tmp-for-copy
+           fi
+           start weave
+           start ecs
+           while [ "\`nc -zv localhost 51678 &> /dev/null; echo \$?\`" != "0" ]; do
+             echo "ecs agent is unreachable"
+             sleep 10
+           done
+           arnId=\`curl http://localhost:51678/v1/metadata | jq -r .ContainerInstanceArn\`
+           resp=\`/usr/local/bin/aws ecs put-attributes --cluster ${EcsClusterName} --attributes name=context,value=master,targetId="\$arnId"\`
+           describeInstance=`aws ecs describe-container-instances --cluster ${EcsClusterName} --container-instances $arnId`
+           cpu=`echo $describeInstance | jq '.containerInstances | .[].registeredResources | .[] | select(.name=="CPU") | .integerValue'`
+           memory=`echo $describeInstance | jq '.containerInstances | .[].registeredResources | .[] | select(.name=="MEMORY") | .integerValue'`
+           requestMist="{
+             \"family\": \"${EcsClusterName}-master\",
+             \"containerDefinitions\": [
+               {
+                 \"name\": \"${EcsClusterName}-master\",
+                 \"memory\": $[$memory-500],
+                 \"cpu\": $[$cpu-250],
+                 \"image\": \"hydrosphere/mist:ecs-${SparkVersion}\",
+                 \"command\": [
+                   \"mist-ecs\"
+                 ],
+                 \"links\": [
+                   \"mosquitto:mosquitto\"
+                 ],
+                 \"essential\": true,
+                 \"mountPoints\": [
+                   {
+                     \"sourceVolume\": \"mist-configs\",
+                     \"containerPath\": \"/usr/share/mist/configs/\",
+                     \"readOnly\": false
+                   },
+                   {
+                     \"sourceVolume\": \"mist-jobs\",
+                     \"containerPath\": \"/jobs/\",
+                     \"readOnly\": false
+                   }
+                 ]
+               },{
+                 \"name\": \"mosquitto\",
+                 \"memory\": 500,
+                 \"cpu\": 250,
+                 \"image\": \"ansi/mosquitto\",
+                 \"essential\": true
+               }
+             ],
+             \"volumes\": [
+               {
+                 \"name\": \"mist-configs\",
+                 \"host\": {
+                   \"sourcePath\": \"/mnt/efs/mist-configs\"
+                 }
+               },
+               {
+                 \"name\": \"mist-jobs\",
+                 \"host\": {
+                   \"sourcePath\": \"/mnt/efs/mist-jobs\"
+                 }
+               }
+             ]
+           }"
+           aws ecs register-task-definition --cli-input-json "$requestMist"
+           responceMist=`aws ecs run-task --cluster ${EcsClusterName} --placement-constraints type=memberOf,expression="attribute:context == master" --task-definition ${EcsClusterName}-master`
