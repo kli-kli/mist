@@ -1,7 +1,5 @@
 package io.hydrosphere.mist.master
 
-import java.io.File
-
 import io.hydrosphere.mist.MistConfig
 import io.hydrosphere.mist.utils.Logger
 
@@ -32,7 +30,8 @@ class LocalWorkerRunner(sparkHome: String) extends WorkerRunner with Logger {
     import settings._
 
     val cmd = Seq(
-      s"${sys.env("MIST_HOME")}/bin/worker",
+      s"${sys.env("MIST_HOME")}/bin/mist-worker",
+      "--runner", "local",
       "--name", name,
       "--context", context,
       "--config", configFilePath,
@@ -51,7 +50,8 @@ object DockerWorkerRunner extends WorkerRunner {
     import settings._
 
     val cmd = Seq(
-      s"${sys.env("MIST_HOME")}/bin/docker-worker",
+      s"${sys.env("MIST_HOME")}/bin/mist-worker",
+      "--runner", "docker",
       "--name", name,
       "--context", context,
       "--config", configFilePath,
