@@ -5,7 +5,6 @@ context=""
 config=""
 java_args=""
 jar=""
-runner=""
 
 while [[ $# > 1 ]]
 do
@@ -31,11 +30,6 @@ do
       shift
       ;;
     
-    --runner)
-      runner="$2"
-      shift
-      ;;
-
     --run-options)
       run_options="$2"
       shift
@@ -87,4 +81,3 @@ MAIN_CLASS="io.hydrosphere.mist.worker.Worker"
 DRIVER_JAVA_OPTIONS="-Dconfig.file=${config} -Dakka.roles.1=worker-${name} ${java_args}"
 
 exec $SPARK_SUBMIT --class $MAIN_CLASS --driver-java-options "$DRIVER_JAVA_OPTIONS" ${run_options} $jar $name $context
-

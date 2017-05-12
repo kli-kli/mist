@@ -206,7 +206,7 @@ then
             then
                 export socket="--unix-socket /var/run/docker.sock"
             fi
-            parentContainer=`curl -X GET $socket -H "Content-Type: application/json" http://${docker_host}:${docker_port}/containers/$HOSTNAME/json` 
+            parentContainer=`curl -s -X GET $socket -H "Content-Type: application/json" http://${docker_host}:${docker_port}/containers/$HOSTNAME/json`
             name=`echo $parentContainer | jq -r '.Name'`
             image=`echo $parentContainer | jq -r '.Config.Image'`
             links="[\"$name:/master\"]"
@@ -225,8 +225,8 @@ then
                     \"Links\": $links
                 }
             }"
-            containerId=`curl -X POST $socket -H "Content-Type: application/json" http://${docker_host}:${docker_port}/containers/create -d "$request" | jq -r '.Id'`
-            curl -X POST $socket -H "Content-Type: application/json" http://${docker_host}:${docker_port}/containers/${containerId}/start
+            containerId=`curl -s -X POST $socket -H "Content-Type: application/json" http://${docker_host}:${docker_port}/containers/create -d "$request" | jq -r '.Id'`
+            curl -s -X POST $socket -H "Content-Type: application/json" http://${docker_host}:${docker_port}/containers/${containerId}/start
         else
             (>&2 echo "mist.workers.run is wrong")
             exit 3   

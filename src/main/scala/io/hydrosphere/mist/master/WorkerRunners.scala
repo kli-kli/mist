@@ -51,16 +51,15 @@ object DockerWorkerRunner extends WorkerRunner {
     import settings._
 
     val cmd = Seq(
-      s"${sys.env("MIST_HOME")}/bin/mist",
-      "start",
-      "worker",
-      "--runner", "docker",
-      "--docker-host", MistConfig.Workers.dockerHost,
-      "--docker-port", MistConfig.Workers.dockerPort.toString,
-      "--namespace", name,
+      s"${sys.env("MIST_HOME")}/bin/docker-worker",
+      "--name", name,
+      "--context", context,
       "--config", configFilePath,
       "--jar", jarPath,
-      "--run-options", runOptions)
+      "--run-options", runOptions,
+      "--docker-host", MistConfig.Workers.dockerHost,
+      "--docker-port", MistConfig.Workers.dockerPort.toString)
+
     val builder = Process(cmd)
     builder.run(false)
   }
