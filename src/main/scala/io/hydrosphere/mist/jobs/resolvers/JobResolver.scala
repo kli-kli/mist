@@ -30,6 +30,9 @@ object JobResolver {
       new HDFSResolver(path, saveDirectory)
     else if(path.startsWith("mvn://"))
       MavenArtifactResolver.fromPath(path)
+    //TODO do support for host and virtual style http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html
+    else if(path.startsWith("http://"))
+      new S3Resolver(path)
     else
       new LocalResolver(path)
   }

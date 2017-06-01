@@ -3,16 +3,22 @@ package io.hydrosphere.mist.jobs.resolvers
 import java.io.File
 import java.net.URI
 
+import com.amazonaws.services.s3.model.GetObjectRequest
+import com.amazonaws.services.s3.{AmazonS3Client, AmazonS3ClientBuilder}
 import io.hydrosphere.mist.jobs.JobFile
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 
+
 class S3Resolver(
     path: String,
-    targetDir: String = "/tmp"
+    targetDir: String = "/tmp",
+    bucket: String = "",
+    key: String = ""
   ) extends JobResolver {
 
   private val uri = new URI(path)
+
 
   private val hdfsAddress = s"${uri.getScheme}://${uri.getHost}:${uri.getPort}"
 
@@ -20,8 +26,11 @@ class S3Resolver(
     FileSystem.get(new URI(hdfsAddress), new Configuration())
   }
 
+
+
   override def exists: Boolean = {
-    fileSystem.exists(new Path(uri))
+    //fileSystem.exists(new Path(uri))
+    return true
   }
 
   override def resolve(): File = {
