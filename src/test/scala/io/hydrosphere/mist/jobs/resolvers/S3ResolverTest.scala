@@ -5,8 +5,10 @@ import java.nio.file.{Files, Paths}
 import io.hydrosphere.mist.jobs.JobFile
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 
+//TODO may be it is not good idea run tests with real data from amazon because it costs money i believe
 class S3ResolverTest extends FunSuite with Matchers {
 
+  //TODO it should be change for some own test url
   val existUrl = "https://nutrition001.s3.amazonaws.com/006.html"
   val nonExistUrl = "https://someBucket123.s3.amazonaws.com/someKey123"
   val incorectUrl =  "http://abracadabra.com/"
@@ -30,6 +32,7 @@ class S3ResolverTest extends FunSuite with Matchers {
     an [JobFile.NotFoundException] should be thrownBy resolver.resolve()
   }
 
+  //TODO this test doesnt work now because i dont have any public jars
   test("resolve should copy file from S3") {
     val resolver = new S3Resolver(existUrl, "/tmp")
     val file = resolver.resolve()
