@@ -1,7 +1,6 @@
 package io.hydrosphere.mist.jobs.resolvers
 
 import java.io.File
-import java.net.URI
 import java.nio.file.Paths
 
 import com.amazonaws.regions.{Region, Regions}
@@ -10,17 +9,25 @@ import com.amazonaws.services.s3.{AmazonS3ClientBuilder, AmazonS3URI}
 import io.hydrosphere.mist.jobs.JobFile
 
 
-class S3Resolver(
-    path: String,
-    targetDir: String = "/tmp"
-  ) extends JobResolver {
+case class S3Resolver(
+                  path: String,
+                  targetDir: String = "/tmp"
+                ) extends JobResolver {
 
   private val amazonS3URI = new AmazonS3URI(path)
 
+
   private val s3Client = AmazonS3ClientBuilder.standard()
-    .withRegion(Regions.DEFAULT_REGION)
+    .withRegion(matchRegion(amazonS3URI.getRegion))
     .withForceGlobalBucketAccessEnabled(true)
     .build()
+
+  private def isEmpty(x: String) = Option(x).forall(_.isEmpty)
+
+  private def matchRegion (in: String): Regions = in match  {
+    case in if isEmpty(in) => Regions.DEFAULT_REGION
+    case in => Regions.fromName(in)
+  }
 
 
   override def exists: Boolean = {
@@ -31,19 +38,15 @@ class S3Resolver(
     if (!exists) {
       throw new JobFile.NotFoundException(s"file $path not found")
     }
-      val regionStr  = amazonS3URI.getRegion
-      val bucket = amazonS3URI.getBucket
-      val key = amazonS3URI.getKey
-      var regions = Regions.DEFAULT_REGION
-      //TODO Dunno
-      if (regionStr != null) {
-        regions = Regions.fromName(regionStr)
-        s3Client.setRegion(Region.getRegion(regions))
-      }
-      //TODO thinking about name of jars
-      //TODO what to do if file exists already?
-      val localPath = Paths.get(targetDir, "%s_%s_%s.jar".format(regions, bucket, key))
-      val s3Object = s3Client.getObject(new GetObjectRequest(bucket, key), localPath.toFile)
-      new File(localPath.toString)
-    }
+    //TODO now it is case non sensitive should it be like that?
+    val regionStr = amazonS3URI.getRegion.toLowerCase
+    val bucket = amazonS3URI.getBucket.toLowerCase
+    val key = amazonS3URI.getKey.toLowerCase
+    val region = amazonS3URI.getRegion.toLowerCase
+    //TODO this identifier for jar is it ok?
+    val localPath = Paths.get(targetDir, "%s_%s_%s.jar".format(region, bucket, key))
+    //TODO what to do if file exists already?
+    val s3Object = s3Client.getObject(new GetObjectRequest(bucket, key), localPath.toFile)
+    new File(localPath.toString)
+  }
 }

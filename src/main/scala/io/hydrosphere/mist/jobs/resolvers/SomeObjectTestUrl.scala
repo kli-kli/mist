@@ -11,7 +11,7 @@ import com.amazonaws.services.s3.model.GetObjectRequest
   */
 object SomeObjectTestUrl {
 
-  val urlStr = "https://s3.amazonaws.com/nutrition001/006.html"
+  val urlStr = "https://s3-us-west-2.amazonaws.com/nutrition001/006.html"
   val targetDir: String = "/tmp"
 
   def main(args: Array[String]): Unit = {
