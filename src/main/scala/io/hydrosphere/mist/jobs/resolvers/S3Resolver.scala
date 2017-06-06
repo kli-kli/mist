@@ -7,6 +7,7 @@ import java.nio.file.Paths
 import com.amazonaws.regions.{Region, Regions}
 import com.amazonaws.services.s3.model.GetObjectRequest
 import com.amazonaws.services.s3.{AmazonS3ClientBuilder, AmazonS3URI}
+import io.hydrosphere.mist.jobs.JobFile
 
 
 class S3Resolver(
@@ -27,8 +28,9 @@ class S3Resolver(
   }
 
   override def resolve(): File = {
-    //TODO what to do if file exists already?
     if (!exists) {
+      throw new JobFile.NotFoundException(s"file $path not found")
+    }
       val regionStr  = amazonS3URI.getRegion
       val bucket = amazonS3URI.getBucket
       val key = amazonS3URI.getKey
@@ -39,9 +41,9 @@ class S3Resolver(
         s3Client.setRegion(Region.getRegion(regions))
       }
       //TODO thinking about name of jars
+      //TODO what to do if file exists already?
       val localPath = Paths.get(targetDir, "%s_%s_%s.jar".format(regions, bucket, key))
       val s3Object = s3Client.getObject(new GetObjectRequest(bucket, key), localPath.toFile)
       new File(localPath.toString)
     }
-  }
 }
