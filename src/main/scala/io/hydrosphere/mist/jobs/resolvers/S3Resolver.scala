@@ -45,7 +45,7 @@ case class S3Resolver(
     val region = amazonS3URI.getRegion.toLowerCase
     //TODO this identifier for jar is it ok?
     val localPath = Paths.get(targetDir, "%s_%s_%s.jar".format(region, bucket, key))
-    //TODO what to do if file exists already?
+    //TODO what to do if file exists already? now it overwrites file
     val s3Object = s3Client.getObject(new GetObjectRequest(bucket, key), localPath.toFile)
     new File(localPath.toString)
   }
