@@ -12,16 +12,24 @@ object SomeObjectTestUrl {
   val urlStr = "https://s3.amazonaws.com/nutrition001/006.html"
 
   def main(args: Array[String]): Unit = {
+    val amazonS3URI = new AmazonS3URI(urlStr)
+    val regionStr  = amazonS3URI.getRegion
+    val bucket = amazonS3URI.getBucket
+    val key = amazonS3URI.getKey
+
+    var region = Regions.DEFAULT_REGION
+
+    //TODO Dunno
+    if (regionStr != null) {
+      region = Regions.fromName(regionStr)
+    }
+
     val s3Client = AmazonS3ClientBuilder.standard()
-                    .withRegion(Regions.DEFAULT_REGION)
+                    .withRegion(region)
                     .withForceGlobalBucketAccessEnabled(true)
                     .build()
 
-    val amazonS3URI = new AmazonS3URI(urlStr)
-    println(amazonS3URI.getRegion)
-    println(amazonS3URI.getBucket)
-    println(amazonS3URI.getKey)
-    val s3Object = s3Client.getObject(new GetObjectRequest(amazonS3URI.getBucket, amazonS3URI.getKey))
+    val s3Object = s3Client.getObject(new GetObjectRequest(bucket, key))
     println("Content-Type: " + s3Object.getObjectMetadata.getContentType)
   }
 
