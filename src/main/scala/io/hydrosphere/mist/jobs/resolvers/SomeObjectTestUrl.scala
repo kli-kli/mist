@@ -1,7 +1,7 @@
 package io.hydrosphere.mist.jobs.resolvers
 
 import com.amazonaws.regions.Regions
-import com.amazonaws.services.s3.AmazonS3ClientBuilder
+import com.amazonaws.services.s3.{AmazonS3ClientBuilder, AmazonS3URI}
 import com.amazonaws.services.s3.model.GetObjectRequest
 
 /**
@@ -9,17 +9,19 @@ import com.amazonaws.services.s3.model.GetObjectRequest
   */
 object SomeObjectTestUrl {
 
-  val region = "region"
-  val bucketName = "mattress01"
-  val key = "004.html"
+  val urlStr = "https://s3.amazonaws.com/nutrition001/006.html"
 
   def main(args: Array[String]): Unit = {
     val s3Client = AmazonS3ClientBuilder.standard()
-                    .withRegion(Regions.US_EAST_1)
+                    .withRegion(Regions.DEFAULT_REGION)
                     .withForceGlobalBucketAccessEnabled(true)
                     .build()
 
-    val s3Object = s3Client.getObject(new GetObjectRequest(bucketName, key))
+    val amazonS3URI = new AmazonS3URI(urlStr)
+    println(amazonS3URI.getRegion)
+    println(amazonS3URI.getBucket)
+    println(amazonS3URI.getKey)
+    val s3Object = s3Client.getObject(new GetObjectRequest(amazonS3URI.getBucket, amazonS3URI.getKey))
     println("Content-Type: " + s3Object.getObjectMetadata.getContentType)
   }
 
