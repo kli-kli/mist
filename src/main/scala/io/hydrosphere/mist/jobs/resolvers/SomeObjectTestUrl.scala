@@ -1,15 +1,13 @@
 package io.hydrosphere.mist.jobs.resolvers
 
-import com.amazonaws.SDKGlobalConfiguration
-import com.amazonaws.auth.profile.ProfileCredentialsProvider
-import com.amazonaws.regions.{Region, Regions}
-import com.amazonaws.services.s3.{AmazonS3Client, AmazonS3ClientBuilder}
+import com.amazonaws.regions.Regions
+import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import com.amazonaws.services.s3.model.GetObjectRequest
 
 /**
   * Created by mironova on 6/1/2017.
   */
-object SomeObjectTest {
+object SomeObjectTestUrl {
 
   val region = "region"
   val bucketName = "mattress01"
@@ -17,7 +15,7 @@ object SomeObjectTest {
 
   def main(args: Array[String]): Unit = {
     val s3Client = AmazonS3ClientBuilder.standard()
-                    .withRegion(Regions.DEFAULT_REGION)
+                    .withRegion(Regions.US_EAST_1)
                     .withForceGlobalBucketAccessEnabled(true)
                     .build()
 
