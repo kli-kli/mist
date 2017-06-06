@@ -12,6 +12,7 @@ import io.hydrosphere.mist.jobs.JobFile
 case class S3Resolver(
                   path: String,
                   targetDir: String = "/tmp"
+
                 ) extends JobResolver {
 
   private val amazonS3URI = new AmazonS3URI(path)
