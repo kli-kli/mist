@@ -30,6 +30,9 @@ object JobResolver {
       new HDFSResolver(path, saveDirectory)
     else if(path.startsWith("mvn://"))
       MavenArtifactResolver.fromPath(path)
+    //TODO what about credentials
+    else if(path.matches("^(http|https)://(.*)s3(.*).amazonaws.com(.*)"))
+      new S3Resolver(path)
     else
       new LocalResolver(path)
   }

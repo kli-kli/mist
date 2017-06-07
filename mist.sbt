@@ -117,6 +117,7 @@ lazy val mist = project.in(file("."))
       "org.typelevel" %% "cats" % "0.9.0"
     ),
 
+    libraryDependencies += "com.amazonaws" % "aws-java-sdk-s3" % "1.11.136",
     libraryDependencies ++= akkaDependencies(scalaVersion.value),
     libraryDependencies ++= miniClusterDependencies,
     dependencyOverrides += "com.typesafe" % "config" % "1.3.1",
