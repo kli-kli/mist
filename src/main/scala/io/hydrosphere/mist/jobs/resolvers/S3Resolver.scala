@@ -56,7 +56,7 @@ case class S3Resolver(
   *  It is copy from {@link com.amazonaws.services.s3.S3CredentialsProviderChain}
   *  it is created when we use {@link com.amazonaws.services.s3.AmazonS3ClientBuilder}
   *  without using {@link com.amazonaws.services.s3.AmazonS3ClientBuilder#withCredentials} method
-  *  but we have to use this method if we want run it without any credentials some times
+  *  but we have to use this class if we want run it without any credentials some times
   */
 class S3CredentialsProviderChain extends DefaultAWSCredentialsProviderChain {
 
