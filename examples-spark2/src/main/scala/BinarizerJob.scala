@@ -1,9 +1,6 @@
 import io.hydrosphere.mist.api._
-import io.hydrosphere.mist.api.ml._
-import org.apache.hadoop.hive.ql.exec.spark.session.SparkSession
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.feature.Binarizer
-import org.apache.spark.sql.SparkSession
 
 object BinarizerJob extends MLMistJob {
 
@@ -31,7 +28,6 @@ object BinarizerJob extends MLMistJob {
   }
 
   def serve(modelPath: String, features: List[Double]): Map[String, Any] = {
-    import LocalPipelineModel._
 
     val pipeline = PipelineLoader.load(modelPath)
     val data = LocalData(LocalDataColumn("feature", features))
