@@ -12,10 +12,10 @@ import io.hydrosphere.mist.jobs.JobFile
 
 
 case class S3Resolver(
-                       path: String,
-                       targetDir: String = "/tmp",
-                       credentials: AWSCredentialsProvider = new S3CredentialsProviderChain()
-                     ) extends JobResolver {
+   path: String,
+   targetDir: String = "/tmp",
+   credentials: AWSCredentialsProvider = new S3CredentialsProviderChain()
+ ) extends JobResolver {
 
   private val amazonS3URI = new AmazonS3URI(path)
 
@@ -52,11 +52,11 @@ case class S3Resolver(
 }
 
 /**
-  *  it hack for provide credentials by default if it is not.
-  *  It is copy from {@link com.amazonaws.services.s3.S3CredentialsProviderChain}
-  *  it is created when we use {@link com.amazonaws.services.s3.AmazonS3ClientBuilder}
-  *  without using {@link com.amazonaws.services.s3.AmazonS3ClientBuilder#withCredentials} method
-  *  but we have to use this class if we want run it without any credentials some times
+  * it hack for provide credentials by default if it is not.
+  * It is copy from {@link com.amazonaws.services.s3.S3CredentialsProviderChain}
+  * it is created when we use {@link com.amazonaws.services.s3.AmazonS3ClientBuilder}
+  * without using {@link com.amazonaws.services.s3.AmazonS3ClientBuilder#withCredentials} method
+  * but we have to use this class if we want run it without any credentials some times
   */
 class S3CredentialsProviderChain extends DefaultAWSCredentialsProviderChain {
 
@@ -64,7 +64,9 @@ class S3CredentialsProviderChain extends DefaultAWSCredentialsProviderChain {
     try {
       super.getCredentials()
     } catch {
-      case ace: AmazonClientException => {/*NOP*/}
+      case ace: AmazonClientException => {
+        /*NOP*/
+      }
     }
     null
   }
